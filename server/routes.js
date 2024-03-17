@@ -3,12 +3,16 @@ const router = express.Router();
 
 const {
     createUser,
+    updateUser,
+    deleteUser,
     createProduct,
     createFavorite,
     fetchUsers,
     fetchProducts,
     fetchFavorites,
     destroyFavorite,
+    deleteProduct,
+    updateProduct,
     authenticate,
     findUserWithToken,
 } = require("./db");
@@ -74,6 +78,77 @@ router.post("/users/signup", validateRequiredFields, async (req, res, next) => {
         next(error);
     }
 });
+// Fetch all users
+router.get("/users", async (req, res, next) => {
+    try {
+        // Call the fetchUsers function to retrieve all users
+        const users = await fetchUsers();
+
+        res.status(200).send({
+            message: "Users retrieved successfully.",
+            users: users,
+        });
+    } catch (error) {
+        console.error("Error fetching users:", error);
+        next(error);
+    }
+});
+
+// Update user
+router.put("/user/:userId/update", async (req, res, next) => {
+    try {
+        const userId = req.params.userId;
+        const {
+            username,
+            password,
+            email,
+            address,
+            phone_number,
+            billing_info,
+            is_admin,
+        } = req.body;
+
+        // Check if the required fields are provided
+        if (!userId) {
+            return res.status(400).json({ error: "User ID is required." });
+        }
+        // Update the user information
+        const updatedUser = await updateUser({
+            userId,
+            username,
+            password,
+            email,
+            address,
+            phone_number,
+            billing_info,
+            is_admin,
+        });
+        // Send the updated user object in the response
+        res.status(200).json({
+            message: "User updated successfully.",
+            user: updatedUser,
+        });
+    } catch (error) {
+        console.error("Error updating user:", error);
+        next(error);
+    }
+});
+// Delete User
+router.delete("/user/:userId/delete", async (req, res, next) => {
+    try {
+        const userId = req.params.userId;
+
+        // Call the deleteUser function to delete the user
+        await deleteUser(userId);
+
+        res.status(204).send({
+            message: "User deleted successfully.",
+        });
+    } catch (error) {
+        console.error("Error deleting user:", error);
+        next(error);
+    }
+});
 
 // Create new product
 router.post("/products/create", async (req, res, next) => {
@@ -83,9 +158,10 @@ router.post("/products/create", async (req, res, next) => {
         // validate input data
         if (!name || !description || !price || !photo_url) {
             return res.status(400).json({
-                error: "A product name, description, price, and photo_url is a required field",
+                error: "A product name, description, valid price, and photo_url is a required field",
             });
         }
+
         // Create the product in the database
         const newProduct = await createProduct({
             name,
@@ -100,6 +176,76 @@ router.post("/products/create", async (req, res, next) => {
         });
     } catch (error) {
         console.error("Error creating product:", error);
+        next(error);
+    }
+});
+
+// Create favorite product
+router.post("/users/:userId/favorites", async (req, res, next) => {
+    try {
+        const userId = req.params.userId;
+        const { product_id } = req.body;
+
+        // Call the createFavorite function to add the favorite to the database
+        const newFavorite = await createFavorite({
+            user_id: userId,
+            product_id,
+        });
+
+        res.status(201).json({
+            message: "Favorite created successfully.",
+            favorite: newFavorite,
+        });
+    } catch (error) {
+        console.error("Error creating favorite:", error);
+        next(error);
+    }
+});
+
+// Update product
+router.put("/product/:productId/update", async (req, res, next) => {
+    try {
+        const productId = req.params.productId;
+
+        const { name, description, price, photo_url } = req.body;
+
+        // Check if the required fields are provided
+        if (!productId) {
+            return res.status(400).send({ error: "Product ID is required." });
+        }
+
+        // Update the product information by passing productId
+        const updatedProduct = await updateProduct({
+            product_id: productId,
+            name,
+            description,
+            price,
+            photo_url,
+        });
+
+        // Send the updated product object in the response
+        res.status(200).json({
+            message: "Product updated successfully.",
+            product: updatedProduct,
+        });
+    } catch (error) {
+        console.error("Error updating product:", error);
+        next(error);
+    }
+});
+
+router.delete("/product/:productId/delete", async (req, res, next) => {
+    try {
+        const productId = req.params.productId;
+
+        // Call the deletePrduct function to delete the product
+        await deleteProduct(productId);
+
+        res.status(204).send({
+            message: "Product deleted successfully.",
+        });
+    } catch (error) {
+        console.error("Error deleting product:", error);
         next(error);
     }
 });
@@ -122,6 +268,45 @@ router.post("/users/:userId/favorites", async (req, res, next) => {
         next(ex);
     }
 });
+
+// Fetch favorite product
+router.get("/users/:userId/favorites", async (req, res, next) => {
+    try {
+        const userId = req.params.userId;
+
+        // Call the fetchFavorites function to retrieve the list of favorites for the user
+        const favorites = await fetchFavorites(userId);
+
+        res.status(200).json({
+            message: "Favorites retrieved successfully.",
+            favorites: favorites,
+        });
+    } catch (error) {
+        console.error("Error fetching favorites:", error);
+        next(error);
+    }
+});
+
+// Delete favorite product
+router.delete(
+    "/users/:userId/favorites/:favoriteId",
+    async (req, res, next) => {
+        try {
+            const userId = req.params.userId;
+            const favoriteId = req.params.favoriteId;
+
+            // Call the destroyFavorite function to remove the favorite from the database
+            await destroyFavorite({ user_id: userId, favorite_id: favoriteId });
+
+            res.status(204).json({
+                message: "Favorite deleted successfully.",
+            });
+        } catch (error) {
+            console.error("Error deleting favorite:", error);
+            next(error);
+        }
+    }
+);
 
 // Login user
 router.post("/auth/login", async (req, res, next) => {

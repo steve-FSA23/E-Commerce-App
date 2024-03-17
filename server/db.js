@@ -60,7 +60,6 @@ const createTables = async () => {
     await client.query(SQL);
 };
 
-// Creating Items
 const createUser = async ({
     username,
     password,
@@ -87,10 +86,105 @@ const createUser = async ({
     ]);
     return response.rows[0];
 };
+const updateUser = async ({
+    userId,
+    username,
+    password,
+    email,
+    address,
+    phone_number,
+    billing_info,
+    is_admin,
+}) => {
+    // Check if any of the fields to update are provided
+    if (
+        !userId ||
+        (!username &&
+            !password &&
+            !email &&
+            !address &&
+            !phone_number &&
+            !billing_info &&
+            !is_admin === undefined)
+    ) {
+        throw new Error("At least one field to update must be provided.");
+    }
+    const fieldsToUpdate = [];
+    const valuesToUpdate = [];
+
+    // Build the SQL query dynamically based on provided fields
+    if (username) {
+        fieldsToUpdate.push("username = $1");
+        valuesToUpdate.push(username);
+    }
+    if (password) {
+        const hashedPassword = await bcrypt.hash(password, 5);
+        fieldsToUpdate.push("password = $2");
+        valuesToUpdate.push(hashedPassword);
+    }
+    if (email) {
+        fieldsToUpdate.push("email = $3");
+        valuesToUpdate.push(email);
+    }
+    if (address) {
+        fieldsToUpdate.push("address = $4");
+        valuesToUpdate.push(address);
+    }
+    if (phone_number) {
+        fieldsToUpdate.push("phone_number = $5");
+        valuesToUpdate.push(phone_number);
+    }
+    if (billing_info) {
+        fieldsToUpdate.push("billing_info = $6");
+        valuesToUpdate.push(billing_info);
+    }
+    if (is_admin !== undefined) {
+        fieldsToUpdate.push("is_admin = $7");
+        valuesToUpdate.push(is_admin);
+    }
+    const SQL = `
+    UPDATE users
+    SET ${fieldsToUpdate.join(", ")}
+    WHERE user_id = $${valuesToUpdate.length + 1}
+    RETURNING *
+    
+`;
+
+    const response = await client.query(SQL, [...valuesToUpdate, userId]);
+    return response.rows[0];
+};
+const fetchUsers = async () => {
+    const SQL = `
+  SELECT user_id, username, email, address, phone_number, is_admin FROM users;
+  `;
+    const response = await client.query(SQL);
+    return response.rows;
+};
+const deleteUser = async (userId) => {
+    // Check if userId is provided
+    if (!userId) {
+        throw new Error("User ID must be provided to delete the user.");
+    }
+    // SQL query to delete the user
+    const SQL = `
+  DELETE FROM users
+  WHERE user_id = $1
+  RETURNING *
+`;
+    try {
+        const response = await client.query(SQL, [userId]);
+        // Return the deleted user
+        return response.rows[0];
+    } catch (error) {
+        throw error;
+    }
+};
 
 const createProduct = async ({ name, description, price, photo_url }) => {
     const SQL = `
-    INSERT INTO products(product_id, name, description, price, photo_url) VALUES($1, $2, $3, $4, $5) RETURNING *
+    INSERT INTO products(product_id, name, description, price, photo_url)
+     VALUES($1, $2, $3, $4, $5)
+     RETURNING *
   `;
 
     const response = await client.query(SQL, [
@@ -103,7 +197,6 @@ const createProduct = async ({ name, description, price, photo_url }) => {
 
     return response.rows[0];
 };
-
 const createFavorite = async ({ user_id, product_id }) => {
     const SQL = `
   INSERT INTO favorites(favorite_id, user_id, product_id) VALUES($1, $2, $3) RETURNING *
@@ -111,9 +204,84 @@ const createFavorite = async ({ user_id, product_id }) => {
     const response = await client.query(SQL, [uuid.v4(), user_id, product_id]);
     return response.rows[0];
 };
+const fetchProducts = async () => {
+    const SQL = `
+  SELECT * FROM products;
+  `;
+    const response = await client.query(SQL);
+    return response.rows;
+};
+const fetchFavorites = async (user_id) => {
+    const SQL = `
+  SELECT * FROM favorites where user_id = $1
+  `;
+    const response = await client.query(SQL, [user_id]);
+    return response.rows;
+};
+
+const updateProduct = async ({
+    product_id,
+    name,
+    description,
+    price,
+    photo_url,
+}) => {
+    // Check if any of the fields to update are provided
+    if (!product_id || !name || !description || !price || !photo_url) {
+        throw new Error("At least one field to update must be provided.");
+    }
+    const fieldsToUpdate = [];
+    const valuesToUpdate = [];
+
+    // Build the SQL query dynamically based on provided fields
+    if (name) {
+        fieldsToUpdate.push("name = $1");
+        valuesToUpdate.push(name);
+    }
+    if (description) {
+        fieldsToUpdate.push("description = $2");
+        valuesToUpdate.push(description);
+    }
+    if (price) {
+        fieldsToUpdate.push("price = $3");
+        valuesToUpdate.push(price);
+    }
+    if (photo_url) {
+        fieldsToUpdate.push("photo_url = $4");
+        valuesToUpdate.push(photo_url);
+    }
+    const SQL = `
+    UPDATE products
+    SET ${fieldsToUpdate.join(", ")}
+    WHERE product_id = $${valuesToUpdate.length + 1}
+    RETURNING *
+`;
+
+    const response = await client.query(SQL, [...valuesToUpdate, product_id]);
+    return response.rows[0];
+};
+
+const deleteProduct = async (productId) => {
+    // Check if userId is provided
+    if (!productId) {
+        throw new Error("Product ID must be provided to delete the product.");
+    }
+    // SQL query to delete the user
+    const SQL = `
+  DELETE FROM products
+  WHERE product_id = $1
+  RETURNING *
+`;
+    try {
+        const response = await client.query(SQL, [productId]);
+        // Return the deleted product
+        return response.rows[0];
+    } catch (error) {
+        throw error;
+    }
+};
 
 // Authentication
-
 const authenticate = async ({ username, password }) => {
     const SQL = `
   SELECT user_id, password
@@ -130,14 +298,14 @@ const authenticate = async ({ username, password }) => {
         throw error;
     }
     const token = jwt.sign({ id: response.rows[0].user_id }, JWT);
-    return token;
+    return { token };
 };
 
 const findUserWithToken = async (token) => {
     let userId;
     try {
         const payload = await jwt.verify(token, JWT);
-        userId = payload.user_id;
+        userId = payload.id;
     } catch (ex) {
         const error = Error("not authorized");
         error.status = 401;
@@ -159,31 +327,6 @@ const findUserWithToken = async (token) => {
     return response.rows[0];
 };
 
-// Fetching Items
-const fetchUsers = async () => {
-    const SQL = `
-  SELECT user_id, username, email, address, phone_number FROM users;
-  `;
-    const response = await client.query(SQL);
-    return response.rows;
-};
-
-const fetchProducts = async () => {
-    const SQL = `
-  SELECT * FROM products;
-  `;
-    const response = await client.query(SQL);
-    return response.rows;
-};
-
-const fetchFavorites = async (user_id) => {
-    const SQL = `
-  SELECT * FROM favorites where user_id = $1
-  `;
-    const response = await client.query(SQL, [user_id]);
-    return response.rows;
-};
-
 // Deleting Items
 const destroyFavorite = async ({ user_id, favorite_id }) => {
     const SQL = `
@@ -196,7 +339,11 @@ module.exports = {
     client,
     createTables,
     createUser,
+    updateUser,
+    deleteUser,
     createProduct,
+    updateProduct,
+    deleteProduct,
     createFavorite,
     fetchUsers,
     fetchProducts,
