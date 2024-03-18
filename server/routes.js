@@ -39,6 +39,7 @@ const isLoggedIn = async (req, res, next) => {
     }
 };
 
+// isAdminMiddleware middleware
 const isAdminMiddleware = async (req, res, next) => {
     try {
         const user = req.user;
