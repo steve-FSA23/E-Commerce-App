@@ -181,21 +181,25 @@ const deleteUser = async (userId) => {
 };
 
 const createProduct = async ({ name, description, price, photo_url }) => {
-    const SQL = `
-    INSERT INTO products(product_id, name, description, price, photo_url)
-     VALUES($1, $2, $3, $4, $5)
-     RETURNING *
-  `;
+    try {
+        const SQL = `
+            INSERT INTO products(product_id, name, description, price, photo_url)
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING *
+        `;
+        const response = await client.query(SQL, [
+            uuid.v4(),
+            name,
+            description,
+            price,
+            photo_url,
+        ]);
 
-    const response = await client.query(SQL, [
-        uuid.v4(),
-        name,
-        description,
-        price,
-        photo_url,
-    ]);
-
-    return response.rows[0];
+        return response.rows[0];
+    } catch (error) {
+        console.error("Error creating product:", error);
+        throw new Error("Error creating product");
+    }
 };
 const createFavorite = async ({ user_id, product_id }) => {
     const SQL = `
@@ -327,6 +331,23 @@ const findUserWithToken = async (token) => {
     return response.rows[0];
 };
 
+const isAdmin = async (userId) => {
+    try {
+        // Query the database to check if the user is an admin
+        const SQL = "SELECT is_admin FROM users WHERE user_id = $1";
+        const response = await client.query(SQL, [userId]);
+
+        // Check if the user is an admin
+        if (response.rows.length > 0 && response.rows[0].is_admin) {
+            return true; // User is an admin
+        } else {
+            return false; // User is not an admin
+        }
+    } catch (error) {
+        console.error("Error checking admin status:", error);
+        throw new Error("Error checking admin status");
+    }
+};
 // Deleting Items
 const destroyFavorite = async ({ user_id, favorite_id }) => {
     const SQL = `
@@ -351,4 +372,5 @@ module.exports = {
     authenticate,
     findUserWithToken,
     destroyFavorite,
+    isAdmin,
 };

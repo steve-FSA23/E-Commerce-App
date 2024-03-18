@@ -15,6 +15,7 @@ const {
     updateProduct,
     authenticate,
     findUserWithToken,
+    isAdmin,
 } = require("./db");
 
 // validation function
@@ -35,6 +36,25 @@ const isLoggedIn = async (req, res, next) => {
         next();
     } catch (ex) {
         next(ex);
+    }
+};
+
+const isAdminMiddleware = async (req, res, next) => {
+    try {
+        const user = req.user;
+
+        // Check if the user is an admin
+        const admin = await isAdmin(user.user_id);
+        if (!admin) {
+            // If not an admin, send forbidden error
+            return res.status(403).json({ error: "Unauthorized" });
+        }
+
+        // User is an admin, proceed to the next middleware or route handler
+        next();
+    } catch (error) {
+        console.error("Error checking admin status:", error);
+        return res.status(500).json({ error: "Internal server error" });
     }
 };
 
@@ -79,7 +99,7 @@ router.post("/users/signup", validateRequiredFields, async (req, res, next) => {
     }
 });
 // Fetch all users
-router.get("/users", async (req, res, next) => {
+router.get("/users", isLoggedIn, isAdminMiddleware, async (req, res, next) => {
     try {
         // Call the fetchUsers function to retrieve all users
         const users = await fetchUsers();
@@ -95,7 +115,7 @@ router.get("/users", async (req, res, next) => {
 });
 
 // Update user
-router.put("/user/:userId/update", async (req, res, next) => {
+router.put("/user/:userId/update", isLoggedIn, async (req, res, next) => {
     try {
         const userId = req.params.userId;
         const {
@@ -134,7 +154,7 @@ router.put("/user/:userId/update", async (req, res, next) => {
     }
 });
 // Delete User
-router.delete("/user/:userId/delete", async (req, res, next) => {
+router.delete("/user/:userId/delete", isLoggedIn, async (req, res, next) => {
     try {
         const userId = req.params.userId;
 
@@ -151,107 +171,102 @@ router.delete("/user/:userId/delete", async (req, res, next) => {
 });
 
 // Create new product
-router.post("/products/create", async (req, res, next) => {
-    try {
-        const { name, description, price, photo_url } = req.body;
+router.post(
+    "/products/create",
+    isLoggedIn,
+    isAdminMiddleware,
+    async (req, res, next) => {
+        try {
+            const { name, description, price, photo_url } = req.body;
 
-        // validate input data
-        if (!name || !description || !price || !photo_url) {
-            return res.status(400).json({
-                error: "A product name, description, valid price, and photo_url is a required field",
+            // validate input data
+            if (!name || !description || !price || !photo_url) {
+                return res.status(400).json({
+                    error: "A product name, description, valid price, and photo_url is a required field",
+                });
+            }
+
+            // Create the product in the database
+            const newProduct = await createProduct({
+                name,
+                description,
+                price,
+                photo_url,
             });
+
+            res.status(201).send({
+                message: "Product created successfully.",
+                data: [newProduct],
+            });
+        } catch (error) {
+            console.error("Error creating product:", error);
+            next(error);
         }
-
-        // Create the product in the database
-        const newProduct = await createProduct({
-            name,
-            description,
-            price,
-            photo_url,
-        });
-
-        res.status(201).send({
-            message: "Product created successfully.",
-            data: [newProduct],
-        });
-    } catch (error) {
-        console.error("Error creating product:", error);
-        next(error);
     }
-});
-
-// Create favorite product
-router.post("/users/:userId/favorites", async (req, res, next) => {
-    try {
-        const userId = req.params.userId;
-        const { product_id } = req.body;
-
-        // Call the createFavorite function to add the favorite to the database
-        const newFavorite = await createFavorite({
-            user_id: userId,
-            product_id,
-        });
-
-        res.status(201).json({
-            message: "Favorite created successfully.",
-            favorite: newFavorite,
-        });
-    } catch (error) {
-        console.error("Error creating favorite:", error);
-        next(error);
-    }
-});
+);
 
 // Update product
-router.put("/product/:productId/update", async (req, res, next) => {
-    try {
-        const productId = req.params.productId;
+router.put(
+    "/product/:productId/update",
+    isLoggedIn,
+    isAdminMiddleware,
+    async (req, res, next) => {
+        try {
+            const productId = req.params.productId;
 
-        const { name, description, price, photo_url } = req.body;
+            const { name, description, price, photo_url } = req.body;
 
-        // Check if the required fields are provided
-        if (!productId) {
-            return res.status(400).send({ error: "Product ID is required." });
+            // Check if the required fields are provided
+            if (!productId) {
+                return res
+                    .status(400)
+                    .send({ error: "Product ID is required." });
+            }
+
+            // Update the product information by passing productId
+            const updatedProduct = await updateProduct({
+                product_id: productId,
+                name,
+                description,
+                price,
+                photo_url,
+            });
+
+            // Send the updated product object in the response
+            res.status(200).json({
+                message: "Product updated successfully.",
+                product: updatedProduct,
+            });
+        } catch (error) {
+            console.error("Error updating product:", error);
+            next(error);
         }
-
-        // Update the product information by passing productId
-        const updatedProduct = await updateProduct({
-            product_id: productId,
-            name,
-            description,
-            price,
-            photo_url,
-        });
-
-        // Send the updated product object in the response
-        res.status(200).json({
-            message: "Product updated successfully.",
-            product: updatedProduct,
-        });
-    } catch (error) {
-        console.error("Error updating product:", error);
-        next(error);
     }
-});
+);
+// Delete a product
+router.delete(
+    "/product/:productId/delete",
+    isLoggedIn,
+    isAdminMiddleware,
+    async (req, res, next) => {
+        try {
+            const productId = req.params.productId;
 
-router.delete("/product/:productId/delete", async (req, res, next) => {
-    try {
-        const productId = req.params.productId;
+            // Call the deletePrduct function to delete the product
+            await deleteProduct(productId);
 
-        // Call the deletePrduct function to delete the product
-        await deleteProduct(productId);
-
-        res.status(204).send({
-            message: "Product deleted successfully.",
-        });
-    } catch (error) {
-        console.error("Error deleting product:", error);
-        next(error);
+            res.status(204).send({
+                message: "Product deleted successfully.",
+            });
+        } catch (error) {
+            console.error("Error deleting product:", error);
+            next(error);
+        }
     }
-});
+);
 
 // Create favoite product
-router.post("/users/:userId/favorites", async (req, res, next) => {
+router.post("/users/:userId/favorites", isLoggedIn, async (req, res, next) => {
     try {
         if (req.params.userId !== req.user.user_id) {
             const error = Error("not authorized");
@@ -270,7 +285,7 @@ router.post("/users/:userId/favorites", async (req, res, next) => {
 });
 
 // Fetch favorite product
-router.get("/users/:userId/favorites", async (req, res, next) => {
+router.get("/users/:userId/favorites", isLoggedIn, async (req, res, next) => {
     try {
         const userId = req.params.userId;
 
@@ -290,6 +305,7 @@ router.get("/users/:userId/favorites", async (req, res, next) => {
 // Delete favorite product
 router.delete(
     "/users/:userId/favorites/:favoriteId",
+    isLoggedIn,
     async (req, res, next) => {
         try {
             const userId = req.params.userId;
